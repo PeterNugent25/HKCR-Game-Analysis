@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rugby Physical Demand Analyser</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0f14;
+    --surface: #141720;
+    --surface2: #1c2030;
+    --border: #2a2f42;
+    --border2: #353c55;
+    --text: #e8ecf4;
+    --muted: #7a829a;
+    --green: #22c55e;
+    --green-dim: #15803d;
+    --green-bg: rgba(34,197,94,0.08);
+    --red: #ef4444;
+    --red-dim: #991b1b;
+    --red-bg: rgba(239,68,68,0.08);
+    --accent: #6366f1;
+    --accent-dim: rgba(99,102,241,0.15);
+    --gold: #f59e0b;
+    --font-head: 'Barlow Condensed', sans-serif;
+    --font-body: 'Barlow', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+  }
+
+  body { background: var(--bg); color: var(--text); font-family: var(--font-body); min-height: 100vh; }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 60px;
+  }
+  .logo { font-family: var(--font-head); font-size: 20px; font-weight: 700; letter-spacing: 0.05em; color: var(--text); }
+  .logo span { color: var(--green); }
+
+  /* ── Layout ── */
+  .app { display: flex; height: calc(100vh - 60px); }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 260px;
+    min-width: 260px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .sidebar-head {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-head);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .game-list { flex: 1; overflow-y: auto; padding: 8px; }
+  .game-item {
+    padding: 10px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    margin-bottom: 2px;
+    transition: all 0.15s;
+  }
+  .game-item:hover { background: var(--surface2); border-color: var(--border); }
+  .game-item.active { background: var(--accent-dim); border-color: var(--accent); }
+  .game-item-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .game-item-meta { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: var(--font-mono); }
+  .sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--border); }
+
+  /* ── Upload zone ── */
+  .upload-zone {
+    border: 1.5px dashed var(--border2);
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: transparent;
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: var(--accent-dim); }
+  .upload-zone input { display: none; }
+  .upload-icon { font-size: 20px; color: var(--muted); margin-bottom: 6px; }
+  .upload-zone p { font-size: 12px; color: var(--muted); line-height: 1.4; }
+  .upload-zone strong { color: var(--text); font-size: 13px; }
+
+  /* ── Main content ── */
+  .main { flex: 1; overflow-y: auto; padding: 24px 28px; }
+
+  /* ── Empty state ── */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    color: var(--muted);
+  }
+  .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.3; }
+  .empty-state h2 { font-family: var(--font-head); font-size: 22px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+  .empty-state p { font-size: 14px; max-width: 360px; line-height: 1.6; }
+
+  /* ── Game header ── */
+  .game-header { margin-bottom: 24px; }
+  .game-title { font-family: var(--font-head); font-size: 32px; font-weight: 700; letter-spacing: 0.02em; margin-bottom: 4px; }
+  .game-subtitle { font-size: 13px; color: var(--muted); font-family: var(--font-mono); }
+
+  /* ── Section ── */
+  .section { margin-bottom: 28px; }
+  .section-label {
+    font-family: var(--font-head);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* ── Stat grid ── */
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .stat-card.green { border-left: 3px solid var(--green); }
+  .stat-card.red { border-left: 3px solid var(--red); }
+  .stat-card.accent { border-left: 3px solid var(--accent); }
+  .stat-card.gold { border-left: 3px solid var(--gold); }
+  .stat-label { font-size: 11px; color: var(--muted); margin-bottom: 6px; letter-spacing: 0.04em; }
+  .stat-value { font-family: var(--font-mono); font-size: 22px; font-weight: 500; color: var(--text); }
+  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 4px; font-family: var(--font-mono); }
+
+  /* ── Half comparison ── */
+  .half-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+
+  /* ── Continuum ── */
+  .continuum-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .continuum-half { margin-bottom: 16px; }
+  .continuum-half:last-child { margin-bottom: 0; }
+  .continuum-half-label { font-family: var(--font-mono); font-size: 11px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
+  .continuum-bar { height: 32px; display: flex; border-radius: 4px; overflow: hidden; position: relative; }
+  .continuum-seg { height: 100%; position: relative; cursor: default; transition: opacity 0.1s; }
+  .continuum-seg:hover { opacity: 0.8; }
+  .continuum-seg.bip { background: var(--green); }
+  .continuum-seg.oop { background: var(--red-dim); }
+  .tick-row { display: flex; margin-top: 4px; position: relative; }
+  .tick { font-family: var(--font-mono); font-size: 10px; color: var(--muted); position: absolute; transform: translateX(-50%); }
+
+  /* ── Tooltip ── */
+  .tooltip {
+    position: fixed;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text);
+    pointer-events: none;
+    z-index: 9999;
+    display: none;
+    white-space: nowrap;
+    line-height: 1.6;
+  }
+  .tooltip.bip-tip { border-left: 3px solid var(--green); }
+  .tooltip.oop-tip { border-left: 3px solid var(--red); }
+
+  /* ── Frequency table ── */
+  .freq-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .freq-table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .freq-table-head {
+    padding: 10px 14px;
+    font-family: var(--font-head);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .freq-table-head.bip-head { background: var(--green-bg); color: var(--green); border-bottom: 1px solid rgba(34,197,94,0.15); }
+  .freq-table-head.oop-head { background: var(--red-bg); color: var(--red); border-bottom: 1px solid rgba(239,68,68,0.15); }
+  .freq-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .freq-dot.green { background: var(--green); }
+  .freq-dot.red { background: var(--red); }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { padding: 8px 14px; text-align: left; font-size: 12px; border-bottom: 1px solid var(--border); }
+  th { font-family: var(--font-mono); font-size: 10px; color: var(--muted); font-weight: 400; letter-spacing: 0.06em; text-transform: uppercase; }
+  tr:last-child td { border-bottom: none; }
+  td:not(:first-child), th:not(:first-child) { text-align: right; font-family: var(--font-mono); }
+  .bar-cell { display: flex; align-items: center; gap: 6px; }
+  .mini-bar { height: 4px; border-radius: 2px; transition: width 0.4s; }
+  .mini-bar.green { background: var(--green); }
+  .mini-bar.red { background: var(--red); }
+
+  /* ── Peak windows ── */
+  .peak-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .peak-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .peak-label { font-size: 11px; color: var(--muted); letter-spacing: 0.04em; }
+  .peak-pct { font-family: var(--font-mono); font-size: 28px; font-weight: 500; color: var(--green); }
+  .peak-detail { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+
+  /* ── Export btn ── */
+  .export-btn {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-family: var(--font-body);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .export-btn:hover { background: var(--surface2); border-color: var(--accent); color: var(--accent); }
+
+  /* ── Game switcher tabs ── */
+  .game-selector { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; }
+  .half-tab {
+    padding: 5px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    transition: all 0.15s;
+  }
+  .half-tab.active { background: var(--accent-dim); border-color: var(--accent); color: var(--text); }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">RUGBY <span>DEMAND</span> ANALYSER</div>
+  <button class="export-btn" id="exportBtn" style="display:none" onclick="exportXLSX()">
+    ↓ Export Excel
+  </button>
+</header>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="sidebar-head">Games</div>
+    <div class="game-list" id="gameList">
+      <div style="padding:16px; font-size:12px; color:var(--muted); text-align:center; line-height:1.6;">
+        Upload XML files below to get started
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <label class="upload-zone" id="uploadZone">
+        <input type="file" id="fileInput" accept=".xml" multiple>
+        <div class="upload-icon">↑</div>
+        <strong>Upload XML files</strong>
+        <p>Drop Sportscode files here or click to browse</p>
+      </label>
+    </div>
+  </aside>
+
+  <main class="main" id="mainContent">
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">◈</div>
+      <h2>No game loaded</h2>
+      <p>Upload one or more Sportscode XML files using the panel on the left. Each file should be named after the game.</p>
+    </div>
+    <div id="dashContent" style="display:none"></div>
+  </main>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const games = {};
+let activeGame = null;
+
+function fmtMSS(s) {
+  const m = Math.floor(s / 60), sec = Math.round(s % 60);
+  return `${m}:${sec.toString().padStart(2,'0')}`;
+}
+function fmtS(s) { return s.toFixed(1) + 's'; }
+
+function parseXML(xmlText, filename) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, 'text/xml');
+  const instances = doc.querySelectorAll('instance');
+  const bip = [];
+  instances.forEach(inst => {
+    const code = inst.querySelector('code')?.textContent?.trim();
+    if (code === 'Ball in Play') {
+      const start = parseFloat(inst.querySelector('start').textContent);
+      const end   = parseFloat(inst.querySelector('end').textContent);
+      if (!isNaN(start) && !isNaN(end) && end > start) bip.push([start, end]);
+    }
+  });
+  bip.sort((a,b) => a[0]-b[0]);
+
+  // detect halftime: largest gap
+  let maxGap = 0, gapIdx = 0;
+  for (let i = 0; i < bip.length - 1; i++) {
+    const gap = bip[i+1][0] - bip[i][1];
+    if (gap > maxGap) { maxGap = gap; gapIdx = i; }
+  }
+
+  const half1 = bip.slice(0, gapIdx + 1);
+  const half2 = bip.slice(gapIdx + 1);
+
+  function oopPeriods(phases) {
+    const oop = [];
+    for (let i = 0; i < phases.length - 1; i++) {
+      const dur = phases[i+1][0] - phases[i][1];
+      if (dur > 0.5) oop.push([phases[i][1], phases[i+1][0], dur]);
+    }
+    return oop;
+  }
+
+  function stats(phases) {
+    const durs = phases.map(p => p[1]-p[0]);
+    const total = durs.reduce((a,b)=>a+b, 0);
+    const start = phases[0][0], end = phases[phases.length-1][1];
+    const halfDur = end - start;
+    return { phases, durs, total, halfDur, pct: total/halfDur*100,
+             avg: total/durs.length, longest: Math.max(...durs),
+             shortest: Math.min(...durs), n: durs.length };
+  }
+
+  function bipInWindow(ws, we, phases) {
+    let t = 0;
+    for (const [s,e] of phases) {
+      const ov = Math.min(e,we) - Math.max(s,ws);
+      if (ov > 0) t += ov;
+    }
+    return t;
+  }
+
+  function bestWindow(winSecs, phases, segStart, segEnd) {
+    let best = 0, bws = segStart;
+    for (let t = segStart; t + winSecs <= segEnd + 1; t += 1) {
+      const b = bipInWindow(t, t+winSecs, phases) / winSecs * 100;
+      if (b > best) { best = b; bws = t; }
+    }
+    return { pct: best, start: bws, end: bws + winSecs };
+  }
+
+  const h1 = stats(half1), h2 = stats(half2);
+  const h1oop = oopPeriods(half1), h2oop = oopPeriods(half2);
+  const allOop = [...h1oop, ...h2oop];
+
+  const seg1 = [half1[0][0], half1[half1.length-1][1]];
+  const seg2 = [half2[0][0], half2[half2.length-1][1]];
+
+  const win10_1 = bestWindow(600,  half1, seg1[0], seg1[1]);
+  const win10_2 = bestWindow(600,  half2, seg2[0], seg2[1]);
+  const win20_1 = bestWindow(1200, half1, seg1[0], seg1[1]);
+  const win20_2 = bestWindow(1200, half2, seg2[0], seg2[1]);
+  const best10 = win10_1.pct >= win10_2.pct ? { ...win10_1, half: 'H1', offset: seg1[0] } : { ...win10_2, half: 'H2', offset: seg2[0] };
+  const best20 = win20_1.pct >= win20_2.pct ? { ...win20_1, half: 'H1', offset: seg1[0] } : { ...win20_2, half: 'H2', offset: seg2[0] };
+
+  function bucketBIP(d) {
+    if (d <= 30)  return '0–30s';
+    if (d <= 60)  return '30–60s';
+    if (d <= 90)  return '60–90s';
+    if (d <= 120) return '90–120s';
+    return '>120s';
+  }
+  function bucketOOP(d) {
+    if (d <= 15) return '0–15s';
+    if (d <= 30) return '15–30s';
+    if (d <= 45) return '30–45s';
+    if (d <= 60) return '45–60s';
+    if (d <= 90) return '60–90s';
+    return '>90s';
+  }
+
+  const BIP_BANDS = ['0–30s','30–60s','60–90s','90–120s','>120s'];
+  const OOP_BANDS = ['0–15s','15–30s','30–45s','45–60s','60–90s','>90s'];
+
+  function freqCount(durs, bucketFn, bands) {
+    const c = Object.fromEntries(bands.map(b=>[b,0]));
+    durs.forEach(d => { const b = bucketFn(d); if (c[b] !== undefined) c[b]++; });
+    return c;
+  }
+
+  return {
+    filename,
+    half1, half2,
+    h1, h2,
+    h1oop, h2oop, allOop,
+    best10, best20,
+    bipBands: BIP_BANDS, oopBands: OOP_BANDS,
+    h1BipFreq: freqCount(h1.durs, bucketBIP, BIP_BANDS),
+    h2BipFreq: freqCount(h2.durs, bucketBIP, BIP_BANDS),
+    h1OopFreq: freqCount(h1oop.map(o=>o[2]), bucketOOP, OOP_BANDS),
+    h2OopFreq: freqCount(h2oop.map(o=>o[2]), bucketOOP, OOP_BANDS),
+    h1Offset: seg1[0], h2Offset: seg2[0],
+    h1End: seg1[1], h2End: seg2[1]
+  };
+}
+
+function addGame(data) {
+  games[data.filename] = data;
+  renderSidebar();
+  selectGame(data.filename);
+}
+
+function renderSidebar() {
+  const list = document.getElementById('gameList');
+  const names = Object.keys(games);
+  if (!names.length) {
+    list.innerHTML = '<div style="padding:16px;font-size:12px;color:var(--muted);text-align:center;line-height:1.6;">Upload XML files below to get started</div>';
+    return;
+  }
+  list.innerHTML = names.map(n => {
+    const g = games[n];
+    const totalBip = g.h1.total + g.h2.total;
+    const totalDur = g.h1.halfDur + g.h2.halfDur;
+    return `<div class="game-item ${n===activeGame?'active':''}" onclick="selectGame('${n.replace(/'/g,"\\'")}')">
+      <div class="game-item-name">${n}</div>
+      <div class="game-item-meta">BIP: ${fmtMSS(totalBip)} · ${(totalBip/totalDur*100).toFixed(0)}%</div>
+    </div>`;
+  }).join('');
+}
+
+function selectGame(name) {
+  activeGame = name;
+  renderSidebar();
+  renderDash(games[name]);
+  document.getElementById('exportBtn').style.display = 'inline-flex';
+}
+
+function renderDash(g) {
+  document.getElementById('emptyState').style.display = 'none';
+  const el = document.getElementById('dashContent');
+  el.style.display = 'block';
+
+  const totalBip = g.h1.total + g.h2.total;
+  const totalDur = g.h1.halfDur + g.h2.halfDur;
+  const allOopDurs = g.allOop.map(o=>o[2]);
+  const avgOop = allOopDurs.reduce((a,b)=>a+b,0)/allOopDurs.length;
+
+  el.innerHTML = `
+    <div class="game-header">
+      <div class="game-title">${g.filename}</div>
+      <div class="game-subtitle">Sportscode XML · ${g.h1.n + g.h2.n} BIP phases · ${g.allOop.length} rest periods</div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Overall</div>
+      <div class="stat-grid">
+        <div class="stat-card green">
+          <div class="stat-label">Total BIP</div>
+          <div class="stat-value">${fmtMSS(totalBip)}</div>
+          <div class="stat-sub">${(totalBip/totalDur*100).toFixed(1)}% of game</div>
+        </div>
+        <div class="stat-card green">
+          <div class="stat-label">BIP phases</div>
+          <div class="stat-value">${g.h1.n + g.h2.n}</div>
+          <div class="stat-sub">avg ${fmtS((totalBip)/(g.h1.n+g.h2.n))}</div>
+        </div>
+        <div class="stat-card red">
+          <div class="stat-label">Total OOP</div>
+          <div class="stat-value">${fmtMSS(totalDur - totalBip)}</div>
+          <div class="stat-sub">${((totalDur-totalBip)/totalDur*100).toFixed(1)}% of game</div>
+        </div>
+        <div class="stat-card red">
+          <div class="stat-label">Avg rest</div>
+          <div class="stat-value">${fmtS(avgOop)}</div>
+          <div class="stat-sub">longest: ${fmtMSS(Math.max(...allOopDurs))}</div>
+        </div>
+        <div class="stat-card gold">
+          <div class="stat-label">Longest BIP phase</div>
+          <div class="stat-value">${fmtMSS(Math.max(g.h1.longest, g.h2.longest))}</div>
+          <div class="stat-sub">shortest: ${fmtS(Math.min(g.h1.shortest, g.h2.shortest))}</div>
+        </div>
+        <div class="stat-card accent">
+          <div class="stat-label">Peak 10min BIP</div>
+          <div class="stat-value">${g.best10.pct.toFixed(1)}%</div>
+          <div class="stat-sub">${g.best10.half} · ${fmtMSS(g.best10.start - g.best10.offset)}–${fmtMSS(g.best10.end - g.best10.offset)}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">By half</div>
+      <div class="half-row">
+        ${halfCard('First Half', g.h1, g.h1oop)}
+        ${halfCard('Second Half', g.h2, g.h2oop)}
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Time continuum</div>
+      <div class="continuum-wrap">
+        ${continuumHalf('First Half', g.half1, g.h1Offset, g.h1End)}
+        <div style="height:1px;background:var(--border);margin:14px 0;"></div>
+        ${continuumHalf('Second Half', g.half2, g.h2Offset, g.h2End)}
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Frequency analysis</div>
+      <div class="freq-grid">
+        ${freqTable('Ball in play', 'bip', g.bipBands, g.h1BipFreq, g.h2BipFreq, g.h1.n, g.h2.n)}
+        ${freqTable('Ball out of play', 'oop', g.oopBands, g.h1OopFreq, g.h2OopFreq, g.h1oop.length, g.h2oop.length)}
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Peak windows</div>
+      <div class="peak-grid">
+        ${peakCard('Best 10-minute window', g.best10, g.h1Offset, g.h2Offset)}
+        ${peakCard('Best 20-minute window', g.best20, g.h1Offset, g.h2Offset)}
+      </div>
+    </div>
+  `;
+
+  attachTooltips();
+}
+
+function halfCard(label, h, oop) {
+  const oopDurs = oop.map(o=>o[2]);
+  const avgOop = oopDurs.length ? oopDurs.reduce((a,b)=>a+b,0)/oopDurs.length : 0;
+  return `<div class="stat-card" style="border:1px solid var(--border)">
+    <div style="font-family:var(--font-head);font-size:14px;font-weight:600;letter-spacing:0.05em;margin-bottom:10px;color:var(--muted)">${label.toUpperCase()}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div><div class="stat-label">BIP time</div><div style="font-family:var(--font-mono);font-size:16px">${fmtMSS(h.total)}</div></div>
+      <div><div class="stat-label">BIP %</div><div style="font-family:var(--font-mono);font-size:16px;color:var(--green)">${h.pct.toFixed(1)}%</div></div>
+      <div><div class="stat-label">Phases</div><div style="font-family:var(--font-mono);font-size:16px">${h.n}</div></div>
+      <div><div class="stat-label">Avg phase</div><div style="font-family:var(--font-mono);font-size:16px">${fmtS(h.avg)}</div></div>
+      <div><div class="stat-label">Longest BIP</div><div style="font-family:var(--font-mono);font-size:16px">${fmtMSS(h.longest)}</div></div>
+      <div><div class="stat-label">Avg rest</div><div style="font-family:var(--font-mono);font-size:16px;color:var(--red)">${fmtS(avgOop)}</div></div>
+    </div>
+  </div>`;
+}
+
+function continuumHalf(label, phases, hStart, hEnd) {
+  const totalSecs = hEnd - hStart;
+  const segs = [];
+  let cursor = hStart;
+  for (const [s,e] of phases) {
+    if (s > cursor + 0.5) segs.push({ type:'oop', start: cursor, end: s, dur: s-cursor });
+    segs.push({ type:'bip', start: s, end: e, dur: e-s });
+    cursor = e;
+  }
+  if (cursor < hEnd - 0.5) segs.push({ type:'oop', start: cursor, end: hEnd, dur: hEnd-cursor });
+
+  const bars = segs.map(seg => {
+    const pct = (seg.dur / totalSecs * 100).toFixed(3);
+    const tipClass = seg.type === 'bip' ? 'bip-tip' : 'oop-tip';
+    const tipText = seg.type === 'bip'
+      ? `BIP: ${fmtMSS(seg.dur)} (${fmtS(seg.dur)})`
+      : `Rest: ${fmtMSS(seg.dur)} (${fmtS(seg.dur)})`;
+    return `<div class="continuum-seg ${seg.type}" style="width:${pct}%" data-tip="${tipText}" data-tipclass="${tipClass}"></div>`;
+  }).join('');
+
+  const ticks = [];
+  const tickEvery = totalSecs > 2400 ? 600 : 300;
+  for (let t = 0; t <= totalSecs; t += tickEvery) {
+    const pct = (t / totalSecs * 100).toFixed(1);
+    const abs = hStart + t;
+    const m = Math.floor(abs/60), s = Math.round(abs%60);
+    ticks.push(`<span class="tick" style="left:${pct}%">${m}:${s.toString().padStart(2,'0')}</span>`);
+  }
+
+  return `<div class="continuum-half">
+    <div class="continuum-half-label">
+      <span>${label}</span>
+      <span style="font-family:var(--font-mono);font-size:10px">${fmtMSS(hEnd-hStart)}</span>
+    </div>
+    <div class="continuum-bar">${bars}</div>
+    <div class="tick-row" style="position:relative;height:16px">${ticks.join('')}</div>
+  </div>`;
+}
+
+function freqTable(title, type, bands, h1freq, h2freq, h1n, h2n) {
+  const isGreen = type === 'bip';
+  const headClass = isGreen ? 'bip-head' : 'oop-head';
+  const dotClass  = isGreen ? 'green' : 'red';
+  const barClass  = isGreen ? 'green' : 'red';
+  const maxH1 = Math.max(...Object.values(h1freq), 1);
+  const maxH2 = Math.max(...Object.values(h2freq), 1);
+
+  const rows = bands.map(b => {
+    const h1n_ = h1freq[b] || 0, h2n_ = h2freq[b] || 0;
+    const h1p = h1n ? (h1n_/h1n*100).toFixed(0) : 0;
+    const h2p = h2n ? (h2n_/h2n*100).toFixed(0) : 0;
+    const b1w = Math.round(h1n_/maxH1*60), b2w = Math.round(h2n_/maxH2*60);
+    return `<tr>
+      <td style="color:var(--text)">${b}</td>
+      <td><div class="bar-cell"><div class="mini-bar ${barClass}" style="width:${b1w}px"></div>${h1n_}</div></td>
+      <td><div class="bar-cell"><div class="mini-bar ${barClass}" style="width:${b2w}px"></div>${h2n_}</div></td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="freq-table-wrap">
+    <div class="freq-table-head ${headClass}">
+      <span class="freq-dot ${dotClass}"></span>${title}
+    </div>
+    <table>
+      <thead><tr><th>Band</th><th>H1</th><th>H2</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+function peakCard(title, win, h1off, h2off) {
+  const off = win.half === 'H1' ? h1off : h2off;
+  return `<div class="peak-card">
+    <div class="peak-label">${title}</div>
+    <div class="peak-pct">${win.pct.toFixed(1)}%</div>
+    <div class="peak-detail">${win.half} · ${fmtMSS(win.start - off)} – ${fmtMSS(win.end - off)} into half</div>
+  </div>`;
+}
+
+function attachTooltips() {
+  const tip = document.getElementById('tooltip');
+  document.querySelectorAll('.continuum-seg').forEach(el => {
+    el.addEventListener('mouseenter', e => {
+      tip.textContent = el.dataset.tip;
+      tip.className = 'tooltip ' + el.dataset.tipclass;
+      tip.style.display = 'block';
+    });
+    el.addEventListener('mousemove', e => {
+      tip.style.left = (e.clientX + 14) + 'px';
+      tip.style.top  = (e.clientY - 30) + 'px';
+    });
+    el.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+  });
+}
+
+function exportXLSX() {
+  if (!activeGame) return;
+  const g = games[activeGame];
+  const wb = XLSX.utils.book_new();
+
+  const summaryRows = [
+    ['BALL-IN-PLAY SUMMARY', '', '', '', '', ''],
+    ['', 'BIP (mm:ss)', 'BIP %', 'Phases', 'Avg Phase (s)', 'Longest (mm:ss)'],
+    ['First Half', fmtMSS(g.h1.total), g.h1.pct.toFixed(1)+'%', g.h1.n, g.h1.avg.toFixed(1), fmtMSS(g.h1.longest)],
+    ['Second Half', fmtMSS(g.h2.total), g.h2.pct.toFixed(1)+'%', g.h2.n, g.h2.avg.toFixed(1), fmtMSS(g.h2.longest)],
+    [],
+    ['PEAK WINDOWS', '', '', '', '', ''],
+    ['Window', 'Peak BIP %', 'Half', 'Start', 'End', ''],
+    ['10 min', g.best10.pct.toFixed(1)+'%', g.best10.half, fmtMSS(g.best10.start - g.best10.offset), fmtMSS(g.best10.end - g.best10.offset), ''],
+    ['20 min', g.best20.pct.toFixed(1)+'%', g.best20.half, fmtMSS(g.best20.start - g.best20.offset), fmtMSS(g.best20.end - g.best20.offset), ''],
+    [],
+    ['BIP FREQUENCY', '', '', '', '', ''],
+    ['Band', 'H1 Count', 'H1 %', 'H2 Count', 'H2 %', ''],
+    ...g.bipBands.map(b => [b, g.h1BipFreq[b]||0, ((g.h1BipFreq[b]||0)/g.h1.n*100).toFixed(1)+'%', g.h2BipFreq[b]||0, ((g.h2BipFreq[b]||0)/g.h2.n*100).toFixed(1)+'%', '']),
+    [],
+    ['OOP FREQUENCY', '', '', '', '', ''],
+    ['Band', 'H1 Count', 'H1 %', 'H2 Count', 'H2 %', ''],
+    ...g.oopBands.map(b => [b, g.h1OopFreq[b]||0, ((g.h1OopFreq[b]||0)/g.h1oop.length*100).toFixed(1)+'%', g.h2OopFreq[b]||0, ((g.h2OopFreq[b]||0)/g.h2oop.length*100).toFixed(1)+'%', ''])
+  ];
+
+  const rawBIP = [['#','Half','Start (s)','End (s)','Duration (s)','Band'],
+    ...[...g.half1.map((p,i)=>['First Half',p]),...g.half2.map((p,i)=>['Second Half',p])].map(([half,p],i)=>[i+1,half,p[0].toFixed(2),p[1].toFixed(2),(p[1]-p[0]).toFixed(2)])];
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), 'Summary');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rawBIP), 'Raw Data');
+  XLSX.writeFile(wb, activeGame + '_analysis.xlsx');
+}
+
+// ── File handling ──
+const fileInput = document.getElementById('fileInput');
+const uploadZone = document.getElementById('uploadZone');
+
+fileInput.addEventListener('change', e => processFiles(e.target.files));
+
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag');
+  processFiles(e.dataTransfer.files);
+});
+
+function processFiles(files) {
+  Array.from(files).filter(f => f.name.endsWith('.xml')).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const gameName = file.name.replace(/\.xml$/i, '');
+      const data = parseXML(e.target.result, gameName);
+      addGame(data);
+    };
+    reader.readAsText(file);
+  });
+}
+</script>
+</body>
+</html>
