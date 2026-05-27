@@ -326,12 +326,18 @@ function parseXML(xmlText, filename) {
   const doc = parser.parseFromString(xmlText, 'text/xml');
   const instances = doc.querySelectorAll('instance');
   const bip = [];
+  const tries = [];
   instances.forEach(inst => {
     const code = inst.querySelector('code')?.textContent?.trim();
     if (code === 'Ball in Play') {
       const start = parseFloat(inst.querySelector('start').textContent);
       const end   = parseFloat(inst.querySelector('end').textContent);
       if (!isNaN(start) && !isNaN(end) && end > start) bip.push([start, end]);
+    }
+    if (code && code.endsWith(' Try')) {
+      const start = parseFloat(inst.querySelector('start').textContent);
+      const team = code.replace(/ Try$/, '').replace(/ Select$/, '').trim();
+      if (!isNaN(start)) tries.push({ time: start, team, code });
     }
   });
   bip.sort((a,b) => a[0]-b[0]);
@@ -422,6 +428,14 @@ function parseXML(xmlText, filename) {
     return c;
   }
 
+  // assign tries to halves
+  const halftimeMid = (half1[half1.length-1][1] + half2[0][0]) / 2;
+  const h1Tries = tries.filter(t => t.time < halftimeMid);
+  const h2Tries = tries.filter(t => t.time >= halftimeMid);
+
+  // unique team names for colour assignment
+  const teamNames = [...new Set(tries.map(t => t.team))].sort();
+
   return {
     filename,
     half1, half2,
@@ -434,7 +448,8 @@ function parseXML(xmlText, filename) {
     h1OopFreq: freqCount(h1oop.map(o=>o[2]), bucketOOP, OOP_BANDS),
     h2OopFreq: freqCount(h2oop.map(o=>o[2]), bucketOOP, OOP_BANDS),
     h1Offset: seg1[0], h2Offset: seg2[0],
-    h1End: seg1[1], h2End: seg2[1]
+    h1End: seg1[1], h2End: seg2[1],
+    tries, h1Tries, h2Tries, teamNames
   };
 }
 
@@ -532,9 +547,10 @@ function renderDash(g) {
     <div class="section">
       <div class="section-label">Time continuum</div>
       <div class="continuum-wrap">
-        ${continuumHalf('First Half', g.half1, g.h1Offset, g.h1End)}
+        ${continuumHalf('First Half', g.half1, g.h1Offset, g.h1End, g.h1Tries, g.teamNames)}
         <div style="height:1px;background:var(--border);margin:14px 0;"></div>
-        ${continuumHalf('Second Half', g.half2, g.h2Offset, g.h2End)}
+        ${continuumHalf('Second Half', g.half2, g.h2Offset, g.h2End, g.h2Tries, g.teamNames)}
+        ${tryLegend(g.teamNames)}
       </div>
     </div>
 
@@ -574,7 +590,36 @@ function halfCard(label, h, oop) {
   </div>`;
 }
 
-function continuumHalf(label, phases, hStart, hEnd) {
+const TEAM_COLOURS = ['#f59e0b','#818cf8','#34d399','#f472b6','#60a5fa','#fb7185','#a78bfa','#2dd4bf'];
+
+function teamColour(team, teamNames) {
+  const idx = teamNames.indexOf(team);
+  return TEAM_COLOURS[idx % TEAM_COLOURS.length];
+}
+
+function tryLegend(teamNames) {
+  if (!teamNames.length) return '';
+  const items = teamNames.map(t => `
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);font-family:var(--font-mono)">
+      ${rugbyBallSVG(teamColour(t, teamNames), 14)} ${t}
+    </span>`).join('');
+  return `<div style="margin-top:10px;display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+    <span style="font-size:11px;color:var(--muted);letter-spacing:0.05em;font-family:var(--font-mono)">TRIES:</span>
+    ${items}
+  </div>`;
+}
+
+function rugbyBallSVG(colour, size) {
+  const s = size || 18;
+  return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" style="display:inline-block;vertical-align:middle;flex-shrink:0" aria-hidden="true">
+    <ellipse cx="12" cy="12" rx="9" ry="5.5" fill="${colour}" transform="rotate(-35 12 12)"/>
+    <line x1="6.5" y1="8.5" x2="17.5" y2="15.5" stroke="rgba(0,0,0,0.25)" stroke-width="1" stroke-linecap="round"/>
+    <line x1="9" y1="6.8" x2="10.5" y2="17.2" stroke="rgba(255,255,255,0.4)" stroke-width="0.8" stroke-linecap="round"/>
+    <line x1="13.5" y1="6.8" x2="15" y2="17.2" stroke="rgba(255,255,255,0.4)" stroke-width="0.8" stroke-linecap="round"/>
+  </svg>`;
+}
+
+function continuumHalf(label, phases, hStart, hEnd, tries, teamNames) {
   const totalSecs = hEnd - hStart;
   const segs = [];
   let cursor = hStart;
@@ -603,11 +648,29 @@ function continuumHalf(label, phases, hStart, hEnd) {
     ticks.push(`<span class="tick" style="left:${pct}%">${m}:${s.toString().padStart(2,'0')}</span>`);
   }
 
+  // try markers — positioned above the bar
+  const tryMarkers = (tries || []).map(tr => {
+    const rel = tr.time - hStart;
+    if (rel < 0 || rel > totalSecs) return '';
+    const pct = (rel / totalSecs * 100).toFixed(3);
+    const colour = teamColour(tr.team, teamNames);
+    const gameMin = fmtMSS(rel);
+    const tip = `Try — ${tr.team} (${gameMin} into half)`;
+    return `<div style="position:absolute;left:${pct}%;top:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:2px;z-index:10"
+                 data-tip="${tip}" data-tipclass="bip-tip" class="continuum-seg" title="${tip}">
+      ${rugbyBallSVG(colour, 18)}
+      <div style="width:1.5px;height:8px;background:${colour};opacity:0.7"></div>
+    </div>`;
+  }).join('');
+
+  const tryRowHeight = (tries && tries.length) ? 30 : 0;
+
   return `<div class="continuum-half">
     <div class="continuum-half-label">
       <span>${label}</span>
       <span style="font-family:var(--font-mono);font-size:10px">${fmtMSS(hEnd-hStart)}</span>
     </div>
+    ${tryRowHeight ? `<div style="position:relative;height:${tryRowHeight}px;margin-bottom:2px">${tryMarkers}</div>` : ''}
     <div class="continuum-bar">${bars}</div>
     <div class="tick-row" style="position:relative;height:16px">${ticks.join('')}</div>
   </div>`;
