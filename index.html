@@ -258,40 +258,99 @@ function parseXML(xmlText, filename) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(xmlText, 'text/xml');
   const instances = doc.querySelectorAll('instance');
-  const bip = [], events = [];
+
+  // ── Step 1: detect all team names from codes ────────────────────
+  // Supports both "Team Select Action" and "Team Action" formats.
+  // We collect candidate team prefixes then pick the ones that appear
+  // with multiple different action suffixes (i.e. real teams, not one-off labels).
+  const BIP_PATTERNS = /ball in play/i;
+  const SKIP_PATTERNS = /^(HKCR|OPP|HKG|HKC|Alex|Ben|Callum|Faizal|Harry|Jack|James|Joe|Joshua|Keelan|Korea\s+Half|Hong\s+Kong\s+Half|Luke|Mark|Matt|Max|Nate|Patrick|Paul|Pierce|Rory|Sunia|Thomas)/i;
+
+  const codeCounts = {};
+  instances.forEach(inst => {
+    const code = inst.querySelector('code')?.textContent?.trim();
+    if (code) codeCounts[code] = (codeCounts[code]||0) + 1;
+  });
+
+  // Extract prefix before known action words — works for both formats
+  const ACTION_WORDS = /\s+(Try|Scrum|Lineout|Penalty|Penalties|Breakdown|Rucks?|Maul|Phase\s+Attack|Tackles?|Turnover|Possession|Restart|Kick|Counter|Attacking|Line\s+Break|Quick|Conversion|Start|Shot|Handling|Zone)\b/i;
+  const teamCandidates = {};
+  Object.keys(codeCounts).forEach(code => {
+    if (BIP_PATTERNS.test(code)) return;
+    const m = code.match(ACTION_WORDS);
+    if (!m) return;
+    const prefix = code.slice(0, m.index).replace(/\s+Select$/i,'').trim();
+    if (!prefix || SKIP_PATTERNS.test(prefix) || prefix.length < 3) return;
+    teamCandidates[prefix] = (teamCandidates[prefix]||0) + 1;
+  });
+  // Keep prefixes that appear with 2+ different actions (real teams)
+  const detectedTeams = Object.entries(teamCandidates)
+    .filter(([,n]) => n >= 2)
+    .map(([t]) => t)
+    .sort();
+
+  // ── Step 2: collect all BIP candidates grouped by exact code ───────
+  // Multiple files use different BIP code names; we pick the single best source.
+  // Priority: prefer a non-team-specific code (no team prefix) with the most phases.
+  const bipByCode = {};
+  instances.forEach(inst => {
+    const code = inst.querySelector('code')?.textContent?.trim();
+    if (!code || !BIP_PATTERNS.test(code)) return;
+    const start = parseFloat(inst.querySelector('start')?.textContent);
+    const end   = parseFloat(inst.querySelector('end')?.textContent);
+    if (isNaN(start) || isNaN(end) || end <= start) return;
+    if (!bipByCode[code]) bipByCode[code] = [];
+    bipByCode[code].push([start, end]);
+  });
+
+  // Score each BIP code: prefer codes with no team prefix and most phases
+  let bestBipCode = null, bestBipScore = -1;
+  for (const [code, phases] of Object.entries(bipByCode)) {
+    const hasTeamPrefix = detectedTeams.some(t =>
+      new RegExp('^' + t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), 'i').test(code)
+    );
+    // score: non-team-specific codes score higher; then by phase count
+    const score = (hasTeamPrefix ? 0 : 10000) + phases.length;
+    if (score > bestBipScore) { bestBipScore = score; bestBipCode = code; }
+  }
+  const bip = bestBipCode ? bipByCode[bestBipCode] : [];
+  const events = [];
 
   instances.forEach(inst => {
     const code = inst.querySelector('code')?.textContent?.trim();
     if (!code) return;
-    const start = parseFloat(inst.querySelector('start').textContent);
-    const end   = parseFloat(inst.querySelector('end').textContent);
+    const start = parseFloat(inst.querySelector('start')?.textContent);
+    const end   = parseFloat(inst.querySelector('end')?.textContent);
 
-    if (code === 'Ball in Play') {
-      if (!isNaN(start) && !isNaN(end) && end > start) bip.push([start, end]);
-      return;
-    }
+    // skip BIP codes — already handled above
+    if (BIP_PATTERNS.test(code)) return;
 
-    // ── event detection ────────────────────────────────────────
+    // ── event detection ─────────────────────────────────────────
     const lc = code.toLowerCase();
     let type = null, team = null;
 
-    // extract team from "Team Select ..." pattern
-    const selectMatch = code.match(/^(.+?)\s+Select\s+/i);
-    if (selectMatch) team = selectMatch[1].trim();
+    // Find which team this code belongs to
+    for (const t of detectedTeams) {
+      // Match "Team Select Action" or "Team Action" (with or without Select)
+      const re = new RegExp('^' + t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(\\s+Select)?\\s+', 'i');
+      if (re.test(code)) { team = t; break; }
+    }
 
-    if (code.endsWith(' Try') && code.includes('Select'))       type = 'try';
-    else if (lc.includes('yellow card'))                         type = 'yellow';
-    else if (lc.includes('red card'))                            type = 'red';
-    else if (code.includes('Select Scrum') && !code.includes('Attack') && !code.includes('Speed')) type = 'scrum';
-    else if (code.includes('Select Lineout') && !code.includes('Attack')) type = 'lineout';
-    else if (code.includes('Select Penalties Con'))              type = 'penalty';
+    // Classify event type
+    if (lc.includes('yellow card'))                                          type = 'yellow';
+    else if (lc.includes('red card'))                                        type = 'red';
+    else if (/\btry\b/i.test(code) && team && !/attack/i.test(code))        type = 'try';
+    else if (/scrum/i.test(code) && !/attack|speed/i.test(code) && team)    type = 'scrum';
+    else if (/lineout/i.test(code) && !/attack/i.test(code) && team)        type = 'lineout';
+    else if (/penalt/i.test(code) && team)                                   type = 'penalty';
 
     if (type && !isNaN(start)) events.push({ time: start, end: isNaN(end)?start:end, type, team, code });
   });
 
   bip.sort((a,b) => a[0]-b[0]);
+  if (bip.length < 2) return null;
 
-  // halftime detection
+  // ── Step 3: detect halftime (largest gap between BIP phases) ────
   let maxGap = 0, gapIdx = 0;
   for (let i = 0; i < bip.length-1; i++) {
     const gap = bip[i+1][0] - bip[i][1];
@@ -355,38 +414,39 @@ function parseXML(xmlText, filename) {
   const OOP_BANDS=['0–15s','15–30s','30–45s','45–60s','60–90s','>90s'];
   function freqCount(durs,fn,bands){const c=Object.fromEntries(bands.map(b=>[b,0]));durs.forEach(d=>{const b=fn(d);if(c[b]!==undefined)c[b]++;});return c;}
 
-  // ── tally stats ───────────────────────────────────────────────
-  const teamNames = [...new Set(events.filter(e=>e.team).map(e=>e.team))].sort();
+  // ── Step 4: tally stats (format-agnostic matching) ───────────────
+  const teamNames = detectedTeams.length ? detectedTeams
+    : [...new Set(events.filter(e=>e.team).map(e=>e.team))].sort();
 
-  // event types for tally page
-  const TALLY_MAP = {
-    carries:    e => e.code.includes('Phase Attack'),
-    tackles:    e => e.code.includes('Tackles'),
-    rucks:      e => e.code.includes('Rucks') && !e.code.includes('Speed'),
-    scrums:     e => e.type === 'scrum',
-    mauls:      e => e.code.includes('Maul'),
+  const TALLY_TESTS = {
+    carries:  code => /phase\s+attack/i.test(code),
+    rucks:    code => /rucks?/i.test(code) && !/speed/i.test(code),
+    scrums:   code => /scrum/i.test(code) && !/attack|speed/i.test(code),
+    mauls:    code => /maul/i.test(code),
+    breakdowns: code => /breakdown/i.test(code),
   };
 
-  // rebuild events including tally types
   const allEvents2 = [];
   instances.forEach(inst => {
     const code = inst.querySelector('code')?.textContent?.trim();
-    if (!code || code === 'Ball in Play') return;
-    const start = parseFloat(inst.querySelector('start').textContent);
+    if (!code || BIP_PATTERNS.test(code)) return;
+    const start = parseFloat(inst.querySelector('start')?.textContent);
     if (isNaN(start)) return;
-    const selectMatch = code.match(/^(.+?)\s+Select\s+/i);
-    const team = selectMatch ? selectMatch[1].trim() : null;
+    let team = null;
+    for (const t of teamNames) {
+      const re = new RegExp('^' + t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(\\s+Select)?\\s+', 'i');
+      if (re.test(code)) { team = t; break; }
+    }
     if (!team) return;
-    for (const [tallyKey, testFn] of Object.entries(TALLY_MAP)) {
-      if (testFn({code, type: null})) {
-        allEvents2.push({ time: start, team, tally: tallyKey, code });
-      }
+    for (const [tallyKey, testFn] of Object.entries(TALLY_TESTS)) {
+      if (testFn(code)) allEvents2.push({ time: start, team, tally: tallyKey, code });
     }
   });
 
   function tallyForHalf(halfStart, halfEnd) {
+    const keys = Object.keys(TALLY_TESTS);
     const result = {};
-    for (const tn of teamNames) result[tn] = { carries:0, tackles:0, rucks:0, scrums:0, mauls:0 };
+    for (const tn of teamNames) result[tn] = Object.fromEntries(keys.map(k=>[k,0]));
     allEvents2.forEach(e => {
       if (e.time >= halfStart && e.time <= halfEnd && result[e.team]) {
         result[e.team][e.tally] = (result[e.team][e.tally]||0) + 1;
@@ -413,7 +473,8 @@ function parseXML(xmlText, filename) {
     h2Events: events.filter(e=>e.time>=halftimeMid),
     h1Tally, h2Tally,
     h1BipMins: h1.total/60, h2BipMins: h2.total/60,
-    h1TotalMins: h1.halfDur/60, h2TotalMins: h2.halfDur/60
+    h1TotalMins: h1.halfDur/60, h2TotalMins: h2.halfDur/60,
+    tallyKeys: Object.keys(TALLY_TESTS)
   };
 }
 
@@ -594,8 +655,8 @@ function renderEvents(g) {
 // PAGE 3: Team Tally
 // ══════════════════════════════════════════════════════════════════
 function renderTally(g) {
-  const ACTIONS = ['carries','tackles','rucks','scrums','mauls'];
-  const ACTION_LABELS = {carries:'Carries',tackles:'Tackles',rucks:'Rucks / Breakdowns',scrums:'Scrums',mauls:'Mauls'};
+  const ACTIONS = g.tallyKeys || ['carries','rucks','scrums','mauls','breakdowns'];
+  const ACTION_LABELS = {carries:'Carries',rucks:'Rucks',scrums:'Scrums',mauls:'Mauls',breakdowns:'Breakdowns',tackles:'Tackles'};
 
   function teamTallyTable(halfLabel, tally, totalMins, bipMins) {
     const rows = ACTIONS.map(act => {
@@ -810,7 +871,7 @@ function exportXLSX() {
   if (!activeGame) return;
   const g = games[activeGame];
   const wb = XLSX.utils.book_new();
-  const ACTIONS = ['carries','tackles','rucks','scrums','mauls'];
+  const ACTIONS = g.tallyKeys || ['carries','rucks','scrums','mauls','breakdowns'];
 
   const summaryRows = [
     ['BALL-IN-PLAY SUMMARY'],
