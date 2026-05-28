@@ -290,6 +290,50 @@
   ::-webkit-scrollbar-track{background:transparent}
   ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
   ::-webkit-scrollbar-thumb:hover{background:var(--hk-red-dim)}
+
+  /* ══ PLAYER PAGE ════════════════════════════════════════════════ */
+  .player-hero{background:linear-gradient(135deg,var(--surface2) 0%,var(--surface) 100%);border:1px solid var(--border);border-top:2px solid var(--hk-red);border-radius:8px;padding:16px 20px;display:flex;align-items:center;gap:16px;margin-bottom:16px}
+  .player-hero-num{font-family:var(--font-head);font-size:52px;font-weight:800;line-height:1;color:var(--hk-red);min-width:54px;text-align:center}
+  .player-hero-name{font-family:var(--font-head);font-size:26px;font-weight:700;letter-spacing:0.02em}
+  .player-hero-pos{font-size:12px;color:var(--muted);font-family:var(--font-mono);margin-top:2px}
+
+  /* Player select dropdown */
+  .player-select-wrap{position:relative;display:inline-block;min-width:240px}
+  .player-select{width:100%;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:8px 32px 8px 12px;border-radius:6px;font-family:var(--font-mono);font-size:12px;cursor:pointer;appearance:none;-webkit-appearance:none;transition:border-color 0.15s}
+  .player-select:focus{outline:none;border-color:var(--hk-red)}
+  .player-select-wrap::after{content:'▾';position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;font-size:11px}
+
+  /* Action chips */
+  .action-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-family:var(--font-mono);font-size:10px;border:1px solid var(--border2);background:var(--surface2);white-space:nowrap}
+
+  /* Timeline dot */
+  .tl-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:3px}
+
+  /* Upload individual zone */
+  .upload-ind-zone{border:1.5px dashed var(--border2);border-radius:6px;padding:8px 12px;text-align:center;cursor:pointer;transition:all 0.2s;margin-top:8px;font-size:11px;color:var(--muted)}
+  .upload-ind-zone:hover,.upload-ind-zone.drag{border-color:var(--hk-red);background:var(--hk-red-bg);color:var(--text)}
+  .upload-ind-zone input{display:none}
+
+  /* Radar chart */
+  .radar-wrap{display:flex;align-items:center;justify-content:center;padding:8px}
+
+  /* Player stat grid (smaller cards) */
+  .player-stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:16px}
+
+  /* No-data state */
+  .no-player-state{background:var(--surface);border:1px dashed var(--border2);border-radius:8px;padding:30px;text-align:center;color:var(--muted);font-size:13px}
+  .no-player-state strong{display:block;font-family:var(--font-head);font-size:18px;color:var(--text);margin-bottom:6px}
+
+  /* Possession chain viz */
+  .chain-row{display:flex;align-items:center;gap:0;margin-bottom:3px;flex-wrap:wrap}
+  .chain-phase{width:14px;height:14px;border-radius:2px;flex-shrink:0}
+  .chain-end{width:10px;height:14px;border-radius:0 3px 3px 0;flex-shrink:0;opacity:0.6}
+
+  /* OOP cause bar */
+  .oop-cause-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .oop-cause-bar{height:8px;border-radius:4px;background:var(--hk-red);flex-shrink:0}
+  .oop-cause-label{font-size:11px;color:var(--muted);font-family:var(--font-mono);white-space:nowrap;min-width:120px}
+  .oop-cause-val{font-size:11px;font-family:var(--font-mono);color:var(--text)}
 </style>
 </head>
 <body>
@@ -309,6 +353,7 @@
     <button class="nav-btn active" onclick="showPage('overview')">Overview</button>
     <button class="nav-btn" onclick="showPage('events')">Event Timeline</button>
     <button class="nav-btn" onclick="showPage('tally')">Team Tally</button>
+    <button class="nav-btn" onclick="showPage('player')">Players</button>
     <button class="nav-btn" onclick="showPage('summary')">Summary</button>
   </div>
   <button class="export-btn" id="exportBtn" style="display:none" onclick="exportXLSX()">↓ Export Excel</button>
@@ -323,8 +368,12 @@
     <div class="sidebar-footer">
       <label class="upload-zone" id="uploadZone">
         <input type="file" id="fileInput" accept=".xml" multiple>
-        <strong>Upload XML files</strong>
+        <strong>Upload team XML files</strong>
         <p>Drop Sportscode files here or click to browse</p>
+      </label>
+      <label class="upload-ind-zone" id="uploadIndZone">
+        <input type="file" id="fileInputInd" accept=".xml" multiple>
+        ＋ Upload individual XML files
       </label>
     </div>
   </aside>
@@ -349,6 +398,11 @@
     <!-- PAGE: Team Tally -->
     <div class="page" id="page-tally">
       <div id="dash-tally"></div>
+    </div>
+
+    <!-- PAGE: Player -->
+    <div class="page" id="page-player">
+      <div id="dash-player"></div>
     </div>
 
     <!-- PAGE: Summary (cross-game) -->
@@ -677,14 +731,16 @@ function parseXML(xmlText, filename) {
 function showPage(page) {
   activePage = page;
   document.querySelectorAll('.nav-btn').forEach((b,i) => {
-    b.classList.toggle('active', ['overview','events','tally','summary'][i] === page);
+    b.classList.toggle('active', ['overview','events','tally','player','summary'][i] === page);
   });
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
   if (page === 'summary') renderSummary();
+  if (page === 'player') renderPlayerPage();
 }
 
 function addGame(data) {
+  if (!data) return;
   games[data.filename] = data;
   syncSummaryOrder();
   renderSidebar();
@@ -705,10 +761,11 @@ function renderSidebar() {
     const g = games[n];
     const totalBip = g.h1.total+g.h2.total, totalDur = g.h1.halfDur+g.h2.halfDur;
     const isRenaming = renamingGame === n;
+    const hasInd = !!individualData[n];
     const safeN = n.replace(/'/g,"\\'").replace(/"/g,'&quot;');
     return `<div class="game-item ${n===activeGame?'active':''}" onclick="handleGameItemClick(event,'${safeN}')">
       <div style="display:flex;align-items:center">
-        <div class="game-item-name" style="flex:1">${n}</div>
+        <div class="game-item-name" style="flex:1">${n}${hasInd ? ' <span style="color:var(--green);font-size:9px;font-family:var(--font-mono)">●IND</span>' : ''}</div>
         <div class="game-item-actions">
           <button class="gi-btn" onclick="event.stopPropagation();startRename('${safeN}')" title="Rename">✎</button>
           <button class="gi-btn del" onclick="event.stopPropagation();deleteGame('${safeN}')" title="Delete">✕</button>
@@ -721,7 +778,6 @@ function renderSidebar() {
       </div>` : ''}
     </div>`;
   }).join('');
-  // focus rename input if open
   if (renamingGame) {
     const inp = document.getElementById('rename-input-field');
     if (inp) { inp.focus(); inp.select(); }
@@ -795,6 +851,7 @@ function renderAll(g) {
   renderOverview(g);
   renderEvents(g);
   renderTally(g);
+  if (activePage === 'player') renderPlayerPage();
   attachTooltips();
 }
 
@@ -849,6 +906,14 @@ function renderOverview(g) {
         ${peakCard('Best 10-minute window',g.best10,g.h1Offset,g.h2Offset)}
         ${peakCard('Best 20-minute window',g.best20,g.h1Offset,g.h2Offset)}
       </div>
+    </div>
+
+    <div class="section"><div class="section-label">Possession chains</div>
+      ${possessionChainSection(g)}
+    </div>
+
+    <div class="section"><div class="section-label">Rest period breakdown</div>
+      ${oopCauseSection(g)}
     </div>`;
 }
 
@@ -1148,9 +1213,560 @@ function attachTooltips() {} // no-op: tooltips now delegated globally
 
 
 // ══════════════════════════════════════════════════════════════════
-// PAGE 4: Cross-game Summary
+// POSSESSION CHAIN ANALYSIS
 // ══════════════════════════════════════════════════════════════════
-// ── Summary state ────────────────────────────────────────────────
+function buildPossessionChains(g) {
+  // A possession chain = contiguous BIP phases separated only by rucks
+  // (OOP gap < 15s = ruck/breakdown, >= 15s = new possession)
+  const CHAIN_BREAK_SECS = 15;
+  function chainsFromPhases(phases, oops) {
+    const chains = [];
+    let current = [phases[0]];
+    for (let i = 0; i < oops.length; i++) {
+      if (oops[i][2] >= CHAIN_BREAK_SECS) {
+        chains.push(current);
+        current = [phases[i+1]];
+      } else {
+        if (phases[i+1]) current.push(phases[i+1]);
+      }
+    }
+    chains.push(current);
+    return chains.filter(c => c.length > 0);
+  }
+
+  const h1chains = chainsFromPhases(g.half1, g.h1oop);
+  const h2chains = chainsFromPhases(g.half2, g.h2oop);
+  const allChains = [...h1chains, ...h2chains];
+
+  const lengths = allChains.map(c => c.length);
+  const durations = allChains.map(c => c[c.length-1][1] - c[0][0]);
+
+  function pct(arr, thresh) { return (arr.filter(v=>v>=thresh).length/arr.length*100).toFixed(0)+'%'; }
+
+  return {
+    allChains, h1chains, h2chains,
+    count: allChains.length,
+    avgLen: (lengths.reduce((a,b)=>a+b,0)/lengths.length).toFixed(1),
+    maxLen: Math.max(...lengths),
+    avgDur: durations.reduce((a,b)=>a+b,0)/durations.length,
+    pct3plus: pct(lengths, 3),
+    pct5plus: pct(lengths, 5),
+    dist: {
+      p1:   lengths.filter(l=>l===1).length,
+      p2_3: lengths.filter(l=>l>=2&&l<=3).length,
+      p4_6: lengths.filter(l=>l>=4&&l<=6).length,
+      p7p:  lengths.filter(l=>l>=7).length,
+    }
+  };
+}
+
+function possessionChainSection(g) {
+  const ch = buildPossessionChains(g);
+  const total = ch.count;
+  const w = 100 / total;
+
+  // Visual chain minimap: one row per chain, each phase = a pixel-width bar
+  const MAX_SHOW = 40;
+  const shown = ch.allChains.slice(0, MAX_SHOW);
+  const chainViz = shown.map(chain => {
+    const phases = chain.map(() =>
+      `<div class="chain-phase" style="background:var(--green);width:12px;margin-right:1px"></div>`
+    ).join('');
+    return `<div class="chain-row">${phases}</div>`;
+  }).join('');
+
+  // Distribution bar chart (inline SVG)
+  const distData = [
+    {label:'1 phase',  val:ch.dist.p1,   col:'#86efac'},
+    {label:'2–3',      val:ch.dist.p2_3, col:'#22c55e'},
+    {label:'4–6',      val:ch.dist.p4_6, col:'#16a34a'},
+    {label:'7+',       val:ch.dist.p7p,  col:'#a16207'},
+  ];
+  const maxDist = Math.max(...distData.map(d=>d.val), 1);
+  const distBars = distData.map(d => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+      <div style="font-size:10px;color:var(--muted);font-family:var(--font-mono);width:52px;text-align:right">${d.label}</div>
+      <div style="height:14px;width:${Math.round(d.val/maxDist*140)}px;background:${d.col};border-radius:2px;min-width:${d.val>0?4:0}px"></div>
+      <div style="font-family:var(--font-mono);font-size:11px">${d.val}</div>
+    </div>`).join('');
+
+  return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:13px 15px">
+      <div style="font-family:var(--font-head);font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:12px">Chain metrics</div>
+      <div class="player-stat-grid" style="grid-template-columns:1fr 1fr;gap:8px;margin-bottom:0">
+        <div class="stat-card green"><div class="stat-label">Total chains</div><div class="stat-value">${ch.count}</div></div>
+        <div class="stat-card green"><div class="stat-label">Avg phases/chain</div><div class="stat-value">${ch.avgLen}</div></div>
+        <div class="stat-card gold"><div class="stat-label">Longest chain</div><div class="stat-value">${ch.maxLen} ph</div></div>
+        <div class="stat-card accent"><div class="stat-label">Avg chain duration</div><div class="stat-value">${fmtS(ch.avgDur)}</div></div>
+        <div class="stat-card"><div class="stat-label">Chains ≥3 phases</div><div class="stat-value">${ch.pct3plus}</div><div class="stat-sub">of all possessions</div></div>
+        <div class="stat-card"><div class="stat-label">Chains ≥5 phases</div><div class="stat-value">${ch.pct5plus}</div><div class="stat-sub">sustained play</div></div>
+      </div>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:13px 15px">
+      <div style="font-family:var(--font-head);font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:12px">Chain length distribution</div>
+      ${distBars}
+    </div>
+  </div>`;
+}
+
+// ── OOP cause analysis ─────────────────────────────────────────────
+function buildOOPCauses(g) {
+  // Map OOP periods to the event that caused them (closest event ending just before OOP start)
+  const causes = { scrum:[], lineout:[], penalty:[], kick:[], try_:[], other:[] };
+  const allOOP = g.allOop;
+
+  allOOP.forEach(([oopStart, oopEnd, dur]) => {
+    // Find the last event before this OOP
+    const before = g.events.filter(e => e.time <= oopStart && e.time >= oopStart - 60);
+    const closest = before.sort((a,b) => b.time - a.time)[0];
+    if (!closest) { causes.other.push(dur); return; }
+    if (closest.type === 'scrum')   causes.scrum.push(dur);
+    else if (closest.type === 'lineout') causes.lineout.push(dur);
+    else if (closest.type === 'penalty') causes.penalty.push(dur);
+    else if (closest.type === 'try')     causes.try_.push(dur);
+    else causes.other.push(dur);
+  });
+
+  const avg = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
+  return Object.entries(causes)
+    .map(([k, durs]) => ({
+      label: k === 'try_' ? 'Try/conversion' : k.charAt(0).toUpperCase()+k.slice(1),
+      count: durs.length,
+      avg: avg(durs),
+      total: durs.reduce((a,b)=>a+b,0),
+    }))
+    .filter(d => d.count > 0)
+    .sort((a,b) => b.count - a.count);
+}
+
+function oopCauseSection(g) {
+  const causes = buildOOPCauses(g);
+  const maxCount = Math.max(...causes.map(c=>c.count), 1);
+  const rows = causes.map(c => `<tr>
+    <td style="color:var(--text)">${c.label}</td>
+    <td><div class="bar-cell">
+      <div style="height:5px;border-radius:2px;background:var(--hk-red);width:${Math.round(c.count/maxCount*80)}px"></div>
+      <span style="font-family:var(--font-mono)">${c.count}</span>
+    </div></td>
+    <td style="font-family:var(--font-mono)">${fmtS(c.avg)}</td>
+    <td style="font-family:var(--font-mono);color:var(--muted)">${fmtMSS(c.total)}</td>
+  </tr>`).join('');
+
+  const totalOOP = g.allOop.length;
+  const uncategorised = causes.find(c=>c.label==='Other');
+
+  return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:7px;overflow:hidden">
+    <div style="padding:9px 13px;font-size:10px;color:var(--muted);font-family:var(--font-mono);border-bottom:1px solid var(--border)">
+      ${totalOOP} total OOP periods — categorised by the event that preceded each stoppage
+    </div>
+    <table>
+      <thead><tr><th>Cause</th><th>Count</th><th>Avg rest</th><th>Total rest</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// INDIVIDUAL XML PARSER
+// ══════════════════════════════════════════════════════════════════
+// Storage: individualData[gameName] = { players, actions }
+const individualData = {};
+
+function parseIndividualXML(xmlText, filename) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, 'text/xml');
+  const instances = doc.querySelectorAll('instance');
+
+  // Group by player (code = player name)
+  const players = {};
+  instances.forEach(inst => {
+    const code = inst.querySelector('code')?.textContent?.trim();
+    if (!code || code === '/') return;
+    const start = parseFloat(inst.querySelector('start')?.textContent);
+    const end   = parseFloat(inst.querySelector('end')?.textContent);
+    if (isNaN(start)) return;
+
+    const labels = {};
+    inst.querySelectorAll('label').forEach(lbl => {
+      const g = lbl.querySelector('group')?.textContent?.trim();
+      const t = lbl.querySelector('text')?.textContent?.trim();
+      if (g && t) labels[g] = t;
+    });
+
+    if (!players[code]) players[code] = [];
+    players[code].push({ time: start, end: isNaN(end) ? start+6 : end, labels });
+  });
+
+  return { players, filename };
+}
+
+function addIndividualGame(data, filename) {
+  // Match to a team game by filename prefix (strip _Individual suffix)
+  const gameName = filename
+    .replace(/\.xml$/i,'')
+    .replace(/_?individual$/i,'')
+    .trim();
+
+  // Try exact match first, then fuzzy (starts-with)
+  let matched = Object.keys(games).find(k => k === gameName);
+  if (!matched) matched = Object.keys(games).find(k => k.startsWith(gameName) || gameName.startsWith(k));
+  const key = matched || gameName;
+
+  individualData[key] = data;
+  if (activePage === 'player') renderPlayerPage();
+  renderSidebar(); // show individual data indicator
+}
+
+// ══════════════════════════════════════════════════════════════════
+// PAGE: Player Analysis
+// ══════════════════════════════════════════════════════════════════
+let selectedPlayer = null;
+
+const ACTION_CATEGORIES = {
+  'Tackles (made)':   { group:'1st TACKLER', values:['MADE'], colour:'#60a5fa', icon:'🛡' },
+  'Tackles (missed)': { group:'1st TACKLER', values:['MISS'], colour:'#f87171', icon:'✗' },
+  'Assist tackles':   { group:'ASSIST TACKLE', values:null,   colour:'#818cf8', icon:'🤝' },
+  'Double tackles':   { group:'DOUBLE TACKLE', values:null,   colour:'#a78bfa', icon:'💪' },
+  'Carries':          { group:'BALL CARRY (in Contacts)', values:null, colour:'#22c55e', icon:'🏉' },
+  'Ruck involvement': { group:'CONTACT AREA', values:null,    colour:'#f59e0b', icon:'⚡' },
+  'Jackling':         { group:'JACKLE', values:null,          colour:'#f472b6', icon:'🦅' },
+  'Handling':         { group:'HANDLING', values:null,        colour:'#34d399', icon:'🤲' },
+  'Kicking':          { group:'KICKING', values:null,         colour:'#fb923c', icon:'⚽' },
+  'Pressure plays':   { group:'PRESSURE PLAYS', values:null,  colour:'#2dd4bf', icon:'🎯' },
+  'Specific':         { group:'SPECIFIC', values:null,        colour:'#facc15', icon:'⭐' },
+};
+
+function playerActionCount(actions, catDef) {
+  return actions.filter(a => {
+    const val = a.labels[catDef.group];
+    if (!val) return false;
+    if (catDef.values) return catDef.values.includes(val);
+    return true;
+  });
+}
+
+function renderPlayerPage() {
+  const container = document.getElementById('dash-player');
+  if (!container) return;
+
+  // Gather available games that have individual data
+  const gamesWithInd = Object.keys(games).filter(k => individualData[k]);
+  const currentInd = activeGame ? individualData[activeGame] : null;
+
+  // Build player list from current game's individual data
+  const playerNames = currentInd ? Object.keys(currentInd.players).sort() : [];
+
+  if (!activeGame) {
+    container.innerHTML = `<div class="no-player-state"><strong>No game loaded</strong>Upload a team XML file to begin.</div>`;
+    return;
+  }
+
+  const g = games[activeGame];
+
+  // Controls bar
+  const playerOptions = playerNames.map(p =>
+    `<option value="${p}" ${selectedPlayer===p?'selected':''}>${p}</option>`
+  ).join('');
+
+  const controlsHTML = `
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+      ${currentInd ? `
+        <div class="player-select-wrap">
+          <select class="player-select" onchange="selectedPlayer=this.value;renderPlayerPage()">
+            <option value="">— Select a player —</option>
+            ${playerOptions}
+          </select>
+        </div>
+        <span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${playerNames.length} players · ${activeGame}</span>
+      ` : `<span style="font-size:12px;color:var(--muted)">No individual XML loaded for this game — upload one using the sidebar.</span>`}
+    </div>`;
+
+  if (!currentInd || !selectedPlayer || !currentInd.players[selectedPlayer]) {
+    container.innerHTML = `
+      <div class="game-title">Player Analysis</div>
+      <div class="game-subtitle">Individual player data — ${activeGame}</div>
+      ${controlsHTML}
+      <div class="no-player-state">
+        <strong>${currentInd ? 'Select a player' : 'No individual data'}</strong>
+        ${currentInd ? 'Choose a player from the dropdown above.' : 'Upload an individual XML file for this game using the button in the sidebar.'}
+      </div>`;
+    return;
+  }
+
+  const actions = currentInd.players[selectedPlayer];
+  const halftimeMid = (g.half1[g.half1.length-1][1] + g.half2[0][0]) / 2;
+  const h1Actions = actions.filter(a => a.time < halftimeMid);
+  const h2Actions = actions.filter(a => a.time >= halftimeMid);
+
+  // ── Compute stats per category ──────────────────────────────────
+  const cats = Object.entries(ACTION_CATEGORIES).map(([label, def]) => {
+    const all  = playerActionCount(actions, def);
+    const h1   = playerActionCount(h1Actions, def);
+    const h2   = playerActionCount(h2Actions, def);
+    return { label, def, all, h1, h2 };
+  }).filter(c => c.all.length > 0);
+
+  // Total action count
+  const totalActions = actions.length;
+  const actionsPerBIPMin = (totalActions / ((g.h1BipMins + g.h2BipMins))).toFixed(2);
+
+  // ── Tackle analysis ─────────────────────────────────────────────
+  const tacklesMade   = playerActionCount(actions, ACTION_CATEGORIES['Tackles (made)']).length;
+  const tacklesMissed = playerActionCount(actions, ACTION_CATEGORIES['Tackles (missed)']).length;
+  const tackleTotal   = tacklesMade + tacklesMissed;
+  const tackleEff     = tackleTotal > 0 ? (tacklesMade/tackleTotal*100).toFixed(0)+'%' : '—';
+
+  // ── Carry gainline ───────────────────────────────────────────────
+  const carries = actions.filter(a => a.labels['BALL CARRY (in Contacts)']);
+  const glWon   = carries.filter(a => a.labels['BALL CARRY (in Contacts)'] === 'GL Won' || a.labels['BALL CARRY (in Contacts)'] === '1st Defenders Beat').length;
+  const glPct   = carries.length > 0 ? (glWon/carries.length*100).toFixed(0)+'%' : '—';
+
+  // ── Stat cards ───────────────────────────────────────────────────
+  const statCards = `
+    <div class="player-stat-grid">
+      <div class="stat-card green"><div class="stat-label">Total actions</div><div class="stat-value">${totalActions}</div><div class="stat-sub">${actionsPerBIPMin}/BIP min</div></div>
+      <div class="stat-card green"><div class="stat-label">H1 actions</div><div class="stat-value">${h1Actions.length}</div><div class="stat-sub">${(h1Actions.length/Math.max(g.h1BipMins,1)).toFixed(2)}/BIP min</div></div>
+      <div class="stat-card green"><div class="stat-label">H2 actions</div><div class="stat-value">${h2Actions.length}</div><div class="stat-sub">${(h2Actions.length/Math.max(g.h2BipMins,1)).toFixed(2)}/BIP min</div></div>
+      <div class="stat-card accent"><div class="stat-label">Tackles made</div><div class="stat-value">${tacklesMade}</div><div class="stat-sub">${tackleEff} efficiency</div></div>
+      <div class="stat-card accent"><div class="stat-label">Carries</div><div class="stat-value">${carries.length}</div><div class="stat-sub">${glPct} gainline won</div></div>
+      <div class="stat-card gold"><div class="stat-label">Ruck involvements</div><div class="stat-value">${playerActionCount(actions, ACTION_CATEGORIES['Ruck involvement']).length}</div></div>
+    </div>`;
+
+  // ── Action breakdown table ───────────────────────────────────────
+  const breakdownRows = cats.map(c => `<tr>
+    <td style="color:var(--text)">${c.def.icon} ${c.label}</td>
+    <td class="highlight-val">${c.all.length}</td>
+    <td class="dim-val">${c.h1.length}</td>
+    <td class="dim-val">${c.h2.length}</td>
+    <td style="font-family:var(--font-mono)">${(c.all.length/(g.h1BipMins+g.h2BipMins)).toFixed(2)}</td>
+  </tr>`).join('');
+
+  // ── Tackle quality breakdown ─────────────────────────────────────
+  const tackleTypeRows = (() => {
+    const types = {};
+    actions.filter(a => a.labels['TACKLE']).forEach(a => {
+      const t = a.labels['TACKLE'];
+      if (!types[t]) types[t] = 0;
+      types[t]++;
+    });
+    return Object.entries(types).map(([k,v]) =>
+      `<tr><td style="color:var(--text)">${k}</td><td class="highlight-val">${v}</td><td class="dim-val">${(v/tacklesMade*100).toFixed(0)}%</td></tr>`
+    ).join('');
+  })();
+
+  // ── Carry gainline detail ────────────────────────────────────────
+  const carryRows = (() => {
+    const types = {};
+    carries.forEach(a => {
+      const t = a.labels['BALL CARRY (in Contacts)'];
+      if (!types[t]) types[t] = 0;
+      types[t]++;
+    });
+    const colours = {'GL Won':'var(--green)','1st Defenders Beat':'#34d399','GL Neutral':'var(--muted)','GL Lost':'var(--red)','Turnover':'var(--hk-red)','P&G Won':'#f59e0b'};
+    return Object.entries(types).map(([k,v]) =>
+      `<tr><td style="color:${colours[k]||'var(--text)'}">${k}</td><td class="highlight-val">${v}</td><td class="dim-val">${(v/carries.length*100).toFixed(0)}%</td></tr>`
+    ).join('');
+  })();
+
+  // ── BIP continuum with player action markers ─────────────────────
+  const continuumHTML = `
+    <div class="continuum-wrap">
+      ${continuumHalfWithActions('First Half', g.half1, g.h1Offset, g.h1End, h1Actions, g.teamNames)}
+      <div style="height:1px;background:var(--border);margin:12px 0"></div>
+      ${continuumHalfWithActions('Second Half', g.half2, g.h2Offset, g.h2End, h2Actions, g.teamNames)}
+      <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;display:flex;flex-wrap:wrap;gap:10px">
+        ${Object.entries(ACTION_CATEGORIES).map(([label,def])=>`<span class="legend-item"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${def.colour};margin-right:3px"></span>${def.icon} ${label}</span>`).join('')}
+      </div>
+    </div>`;
+
+  // ── Radar chart (SVG) ────────────────────────────────────────────
+  const radarHTML = buildRadarChart(cats, g.h1BipMins + g.h2BipMins);
+
+  container.innerHTML = `
+    <div class="game-title">Player Analysis</div>
+    <div class="game-subtitle">Individual data · ${activeGame}</div>
+
+    ${controlsHTML}
+
+    <div class="player-hero">
+      <div class="player-hero-num">${selectedPlayer.split(' ').map(w=>w[0]).join('')}</div>
+      <div>
+        <div class="player-hero-name">${selectedPlayer}</div>
+        <div class="player-hero-pos" style="margin-top:4px">${activeGame}</div>
+      </div>
+    </div>
+
+    <div class="section"><div class="section-label">Game summary</div>
+      ${statCards}
+    </div>
+
+    <div class="section"><div class="section-label">Activity overview</div>
+      <div style="display:grid;grid-template-columns:1fr 260px;gap:8px;align-items:start">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:7px;overflow:hidden">
+          <table>
+            <thead><tr><th style="text-align:left">Action</th><th>Total</th><th>H1</th><th>H2</th><th>/BIP min</th></tr></thead>
+            <tbody>${breakdownRows}</tbody>
+          </table>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:12px">
+          ${radarHTML}
+        </div>
+      </div>
+    </div>
+
+    ${tacklesMade + tacklesMissed > 0 ? `
+    <div class="section"><div class="section-label">Tackle detail</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:7px;overflow:hidden">
+          <div style="padding:9px 13px;font-size:10px;font-family:var(--font-mono);color:var(--muted);border-bottom:1px solid var(--border)">Tackle type</div>
+          <table><thead><tr><th style="text-align:left">Type</th><th>Count</th><th>% of made</th></tr></thead><tbody>${tackleTypeRows}</tbody></table>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:13px">
+          <div style="font-size:10px;font-family:var(--font-mono);color:var(--muted);margin-bottom:10px">Efficiency: ${tacklesMade} made / ${tackleTotal} attempted</div>
+          <div style="height:20px;border-radius:4px;overflow:hidden;display:flex">
+            <div style="background:var(--green);width:${tackleTotal>0?tacklesMade/tackleTotal*100:0}%"></div>
+            <div style="background:var(--hk-red);flex:1"></div>
+          </div>
+          <div style="display:flex;gap:14px;margin-top:8px">
+            <span class="legend-item"><span style="background:var(--green);display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px"></span>Made ${tacklesMade}</span>
+            <span class="legend-item"><span style="background:var(--hk-red);display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px"></span>Missed ${tacklesMissed}</span>
+          </div>
+        </div>
+      </div>
+    </div>` : ''}
+
+    ${carries.length > 0 ? `
+    <div class="section"><div class="section-label">Carry gainline</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:7px;overflow:hidden;max-width:360px">
+        <table><thead><tr><th style="text-align:left">Outcome</th><th>Count</th><th>%</th></tr></thead><tbody>${carryRows}</tbody></table>
+      </div>
+    </div>` : ''}
+
+    <div class="section"><div class="section-label">Activity timeline</div>
+      ${continuumHTML}
+    </div>`;
+
+  attachTooltips();
+}
+
+// ── Continuum with player action markers ───────────────────────────
+function continuumHalfWithActions(label, phases, hStart, hEnd, actions, teamNames) {
+  const totalSecs = hEnd - hStart;
+  const segs = [];
+  let cursor = hStart;
+  for (const [s,e] of phases) {
+    if (s > cursor+0.5) segs.push({type:'oop',dur:s-cursor});
+    segs.push({type:'bip',dur:e-s});
+    cursor = e;
+  }
+  if (cursor < hEnd-0.5) segs.push({type:'oop',dur:hEnd-cursor});
+
+  const bars = segs.map(seg => {
+    const pct = (seg.dur/totalSecs*100).toFixed(3);
+    return `<div class="continuum-seg ${seg.type}" style="width:${pct}%"></div>`;
+  }).join('');
+
+  const ticks = [];
+  const tickEvery = totalSecs > 2400 ? 600 : 300;
+  for (let t=0; t<=totalSecs; t+=tickEvery) {
+    const abs = hStart+t;
+    ticks.push(`<span class="tick" style="left:${(t/totalSecs*100).toFixed(1)}%">${Math.floor(abs/60)}:${Math.round(abs%60).toString().padStart(2,'0')}</span>`);
+  }
+
+  // Bucket actions by 5s
+  const buckets = {};
+  actions.forEach(a => {
+    const rel = a.time - hStart;
+    if (rel < 0 || rel > totalSecs) return;
+    const b = Math.round(rel/5)*5;
+    if (!buckets[b]) buckets[b] = [];
+    buckets[b].push(a);
+  });
+
+  const markers = Object.entries(buckets).map(([b, acts]) => {
+    const pct = (parseFloat(b)/totalSecs*100).toFixed(3);
+    const icons = acts.map(a => {
+      // find first matching category
+      const cat = Object.entries(ACTION_CATEGORIES).find(([,def]) => {
+        const val = a.labels[def.group];
+        if (!val) return false;
+        return def.values ? def.values.includes(val) : true;
+      });
+      const [catLabel, catDef] = cat || ['Action', {colour:'#888', icon:'·'}];
+      const detailParts = Object.entries(a.labels).map(([g,t]) => `${g}: ${t}`).join(' | ');
+      const tip = `${catDef.icon} ${catLabel} @ ${fmtMSS(a.time-hStart)} into half | ${detailParts}`;
+      return `<div data-tip="${tip}" data-tipclass="event-tip" style="width:10px;height:10px;border-radius:50%;background:${catDef.colour};cursor:pointer;flex-shrink:0"></div>`;
+    }).join('');
+    return `<div style="position:absolute;left:${pct}%;top:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:1px;z-index:10">
+      <div style="display:flex;gap:1px;align-items:flex-end">${icons}</div>
+      <div style="width:1px;height:5px;background:var(--border2)"></div>
+    </div>`;
+  }).join('');
+
+  const markerH = Object.keys(buckets).length > 0 ? 18 : 0;
+
+  return `<div class="continuum-half">
+    <div class="continuum-half-label"><span>${label}</span><span>${fmtMSS(hEnd-hStart)}</span></div>
+    ${markerH ? `<div style="position:relative;height:${markerH}px;margin-bottom:3px">${markers}</div>` : ''}
+    <div class="continuum-bar">${bars}</div>
+    <div class="tick-row">${ticks.join('')}</div>
+  </div>`;
+}
+
+// ── Radar chart ────────────────────────────────────────────────────
+function buildRadarChart(cats, totalBIPMins) {
+  if (cats.length < 3) return '<div style="color:var(--muted);font-size:11px;padding:8px">Not enough action categories for radar</div>';
+
+  const W = 220, CX = 110, CY = 115, R = 80;
+  const N = Math.min(cats.length, 8);
+  const slicedCats = cats.slice(0, N);
+
+  // Normalise each category to 0–1 using /BIP min, capped at a sensible max
+  const rates = slicedCats.map(c => c.all.length / Math.max(totalBIPMins, 1));
+  const maxRate = Math.max(...rates, 0.1);
+  const normalised = rates.map(r => r / maxRate);
+
+  // Calculate polygon points
+  const pts = normalised.map((v, i) => {
+    const angle = (i / N) * Math.PI * 2 - Math.PI / 2;
+    const r = v * R;
+    return [CX + r * Math.cos(angle), CY + r * Math.sin(angle)];
+  });
+
+  // Grid circles
+  const gridCircles = [0.25, 0.5, 0.75, 1].map(v =>
+    `<circle cx="${CX}" cy="${CY}" r="${v*R}" fill="none" stroke="var(--border2)" stroke-width="1"/>`
+  ).join('');
+
+  // Spokes
+  const spokes = slicedCats.map((_, i) => {
+    const angle = (i / N) * Math.PI * 2 - Math.PI / 2;
+    const x = CX + R * Math.cos(angle), y = CY + R * Math.sin(angle);
+    return `<line x1="${CX}" y1="${CY}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--border2)" stroke-width="1"/>`;
+  }).join('');
+
+  // Polygon fill
+  const polyPts = pts.map(([x,y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+
+  // Labels
+  const labels = slicedCats.map((c, i) => {
+    const angle = (i / N) * Math.PI * 2 - Math.PI / 2;
+    const lx = CX + (R+14) * Math.cos(angle);
+    const ly = CY + (R+14) * Math.sin(angle);
+    const anchor = lx < CX-5 ? 'end' : lx > CX+5 ? 'start' : 'middle';
+    const shortLabel = c.def.icon;
+    return `<text x="${lx.toFixed(1)}" y="${(ly+3).toFixed(1)}" text-anchor="${anchor}" class="chart-label" style="font-size:11px">${shortLabel}</text>`;
+  }).join('');
+
+  return `<svg width="${W}" height="${W}" viewBox="0 0 ${W} ${W}" xmlns="http://www.w3.org/2000/svg">
+    ${gridCircles}${spokes}
+    <polygon points="${polyPts}" fill="var(--hk-red)" fill-opacity="0.2" stroke="var(--hk-red)" stroke-width="1.5"/>
+    ${pts.map(([x,y])=>`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="var(--hk-red)"/>`).join('')}
+    ${labels}
+  </svg>`;
+}
+
+
 let summaryGameOrder = [];   // array of game names in display order
 let summarySortCol   = null; // which column is sorted
 let summarySortDir   = -1;   // -1 = high→low, 1 = low→high
@@ -1610,12 +2226,29 @@ uz.addEventListener('dragover', e => { e.preventDefault(); uz.classList.add('dra
 uz.addEventListener('dragleave', () => uz.classList.remove('drag'));
 uz.addEventListener('drop', e => { e.preventDefault(); uz.classList.remove('drag'); processFiles(e.dataTransfer.files); });
 
+document.getElementById('fileInputInd').addEventListener('change', e => processIndividualFiles(e.target.files));
+const uzi = document.getElementById('uploadIndZone');
+uzi.addEventListener('dragover', e => { e.preventDefault(); uzi.classList.add('drag'); });
+uzi.addEventListener('dragleave', () => uzi.classList.remove('drag'));
+uzi.addEventListener('drop', e => { e.preventDefault(); uzi.classList.remove('drag'); processIndividualFiles(e.dataTransfer.files); });
+
 function processFiles(files) {
   Array.from(files).filter(f=>f.name.endsWith('.xml')).forEach(file => {
     const reader = new FileReader();
     reader.onload = e => {
       const data = parseXML(e.target.result, file.name.replace(/\.xml$/i,''));
-      addGame(data);
+      if (data) addGame(data);
+    };
+    reader.readAsText(file);
+  });
+}
+
+function processIndividualFiles(files) {
+  Array.from(files).filter(f=>f.name.endsWith('.xml')).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const data = parseIndividualXML(e.target.result, file.name);
+      addIndividualGame(data, file.name);
     };
     reader.readAsText(file);
   });
