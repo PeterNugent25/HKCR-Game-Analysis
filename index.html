@@ -114,8 +114,19 @@
   .highlight-val{color:var(--text);font-family:var(--font-mono);font-weight:500}
   .dim-val{color:var(--muted);font-family:var(--font-mono)}
   .team-dot{width:9px;height:9px;border-radius:50%;display:inline-block}
-  /* legend strip */
-  .legend-strip{display:flex;flex-wrap:wrap;gap:12px;padding:10px 0;align-items:center}
+  /* ── Event toggles ── */
+  .toggle-bar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;align-items:center}
+  .toggle-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:var(--font-mono);font-size:11px;cursor:pointer;transition:all 0.15s;user-select:none}
+  .toggle-btn:hover{border-color:var(--border2);filter:brightness(1.2)}
+  .toggle-btn.off{opacity:0.35;background:transparent}
+  .toggle-btn .tog-icon{display:flex;align-items:center}
+  /* hide event markers by type via data attribute */
+  .event-marker[data-etype="try"].hide-try,
+  .event-marker[data-etype="scrum"].hide-scrum,
+  .event-marker[data-etype="lineout"].hide-lineout,
+  .event-marker[data-etype="penalty"].hide-penalty,
+  .event-marker[data-etype="yellow"].hide-yellow,
+  .event-marker[data-etype="red"].hide-red { display:none !important; }
   .legend-item{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);font-family:var(--font-mono)}
   ::-webkit-scrollbar{width:5px}
   ::-webkit-scrollbar-track{background:transparent}
@@ -179,6 +190,8 @@
 const games = {};
 let activeGame = null;
 let activePage = 'overview';
+// which event types are currently visible on the Event Timeline
+const activeFilters = { try:true, scrum:true, lineout:true, penalty:true, yellow:true, red:true };
 
 const TEAM_COLOURS = ['#f59e0b','#818cf8','#34d399','#f472b6','#60a5fa','#fb7185','#a78bfa','#2dd4bf','#facc15','#4ade80'];
 
@@ -586,22 +599,25 @@ function renderOverview(g) {
 // PAGE 2: Event Timeline
 // ══════════════════════════════════════════════════════════════════
 function renderEvents(g) {
-  const eventTypes = [
-    {key:'try',     label:'Try',     icon: c => rugbyBallSVG(c,13)},
-    {key:'scrum',   label:'Scrum',   icon: c => scrumSVG(c,13)},
-    {key:'lineout', label:'Lineout', icon: c => lineoutSVG(c,13)},
-    {key:'penalty', label:'Penalty', icon: c => penaltySVG(c,13)},
+  const EVENT_DEFS = [
+    {key:'try',     label:'Try',         icon: c => rugbyBallSVG(c,13)},
+    {key:'scrum',   label:'Scrum',       icon: c => scrumSVG(c,13)},
+    {key:'lineout', label:'Lineout',     icon: c => lineoutSVG(c,13)},
+    {key:'penalty', label:'Penalty',     icon: c => penaltySVG(c,13)},
     {key:'yellow',  label:'Yellow card', icon: () => cardSVG('yellow',10)},
     {key:'red',     label:'Red card',    icon: () => cardSVG('red',10)},
   ];
 
-  const legendItems = eventTypes.map(et => {
-    const hasEvents = g.events.some(e=>e.type===et.key);
-    if (!hasEvents && (et.key==='yellow'||et.key==='red')) return '';
-    const sampleTeam = g.teamNames[0]||'';
-    const col = teamColour(sampleTeam, g.teamNames);
-    return `<span class="legend-item">${et.icon(col)} ${et.label}</span>`;
-  }).filter(Boolean).join('');
+  const sampleCol = teamColour(g.teamNames[0]||'', g.teamNames);
+
+  // Only show toggles for event types that actually exist in this game
+  const presentTypes = new Set(g.events.map(e=>e.type));
+  const toggles = EVENT_DEFS.filter(et => presentTypes.has(et.key)).map(et => {
+    const on = activeFilters[et.key] !== false;
+    return `<button class="toggle-btn ${on?'':'off'}" onclick="toggleEventType('${et.key}')" id="tog-${et.key}">
+      <span class="tog-icon">${et.icon(sampleCol)}</span>${et.label}
+    </button>`;
+  }).join('');
 
   const teamLegend = g.teamNames.map(t =>
     `<span class="legend-item"><span style="width:9px;height:9px;border-radius:50%;background:${teamColour(t,g.teamNames)};display:inline-block"></span> ${t}</span>`
@@ -612,14 +628,13 @@ function renderEvents(g) {
     <div class="game-subtitle">All tagged events plotted on the game timeline</div>
 
     <div class="section"><div class="section-label">Event timeline</div>
-      <div class="continuum-wrap">
+      <div class="toggle-bar">${toggles}</div>
+      <div class="continuum-wrap" id="event-continuum">
         ${continuumHalf('First Half',g.half1,g.h1Offset,g.h1End,g.h1Events,g.teamNames,true)}
         <div style="height:1px;background:var(--border);margin:12px 0"></div>
         ${continuumHalf('Second Half',g.half2,g.h2Offset,g.h2End,g.h2Events,g.teamNames,true)}
         <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
-          <div style="font-size:10px;color:var(--muted);margin-bottom:6px;font-family:var(--font-mono);letter-spacing:0.06em">EVENTS</div>
-          <div class="legend-strip">${legendItems}</div>
-          <div style="font-size:10px;color:var(--muted);margin-top:8px;margin-bottom:6px;font-family:var(--font-mono);letter-spacing:0.06em">TEAMS</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:6px;font-family:var(--font-mono);letter-spacing:0.06em">TEAMS</div>
           <div class="legend-strip">${teamLegend}</div>
         </div>
       </div>
@@ -649,6 +664,8 @@ function renderEvents(g) {
         </table>
       </div>
     </div>`;
+
+  applyFilters();
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -795,8 +812,19 @@ function continuumHalf(label, phases, hStart, hEnd, events, teamNames, showAllEv
       const tip = `${ev.type} — ${ev.team||'?'} (${gameMin} into half)`;
       return `<div data-tip="${tip}" data-tipclass="event-tip" class="continuum-seg" style="height:auto;display:flex;cursor:default">${iconForEvent(ev.type, colour, 16)}</div>`;
     }).join('');
+    // one wrapper per bucket position; each event inside gets its own data-etype for toggling
+    const etypes = evs.map(ev =>
+      `<div class="event-marker" data-etype="${ev.type}" style="display:flex">${
+        (() => {
+          const colour = ev.team ? teamColour(ev.team, teamNames) : '#888';
+          const gameMin = fmtMSS(ev.time - hStart);
+          const tip = `${ev.type} — ${ev.team||'?'} (${gameMin} into half)`;
+          return `<div data-tip="${tip}" data-tipclass="event-tip" class="continuum-seg" style="height:auto;display:flex;cursor:default">${iconForEvent(ev.type, colour, 16)}</div>`;
+        })()
+      }</div>`
+    ).join('');
     return `<div style="position:absolute;left:${pct}%;top:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:1px;z-index:10">
-      <div style="display:flex;gap:1px;align-items:flex-end">${icons}</div>
+      <div style="display:flex;gap:1px;align-items:flex-end">${etypes}</div>
       <div style="width:1.5px;height:6px;background:var(--border2);opacity:0.8"></div>
     </div>`;
   }).join('');
@@ -910,6 +938,29 @@ function exportXLSX() {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(tallyRows), 'Team Tally');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(eventRows), 'Event Log');
   XLSX.writeFile(wb, activeGame+'_analysis.xlsx');
+}
+
+// ── Event type toggles ────────────────────────────────────────────
+function toggleEventType(type) {
+  activeFilters[type] = !activeFilters[type];
+  // update button appearance
+  const btn = document.getElementById('tog-'+type);
+  if (btn) btn.classList.toggle('off', !activeFilters[type]);
+  applyFilters();
+}
+
+function applyFilters() {
+  const continuum = document.getElementById('event-continuum');
+  if (!continuum) return;
+  // build class list: add hide-X for each disabled type
+  const hideClasses = Object.entries(activeFilters)
+    .filter(([,on]) => !on)
+    .map(([type]) => 'hide-'+type);
+  // remove all hide-* classes first, then re-add active ones
+  continuum.querySelectorAll('.event-marker').forEach(el => {
+    const etype = el.dataset.etype;
+    el.style.display = activeFilters[etype] === false ? 'none' : 'flex';
+  });
 }
 
 // ── File handling ─────────────────────────────────────────────────
